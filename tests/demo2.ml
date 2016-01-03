@@ -40,7 +40,7 @@ let make_nodes events =
     let params = [ "ts", `Int ts ] in
     let (ans: string) = API.post_cypher ~params cmd in
     print_endline ans;
-    match to_json ans |> YoUtil.drop_assoc |> List.assoc "data" with
+    match Yojson.Safe.from_string ans |> YoUtil.drop_assoc |> List.assoc "data" with
     | `List[]  -> OK None
     | `List xs when List.length xs > 1  -> Error "Too many results"
     | `List[`List[ `Int _ts; `Int id] ] ->  OK (Some (_ts,id) )
@@ -54,7 +54,7 @@ let make_nodes events =
     let params = [ "ts", `Int ts ] in
     let (ans: string) = API.post_cypher ~params cmd in
     print_endline ans;
-    match to_json ans |> YoUtil.drop_assoc |> List.assoc "data" with
+    match Yojson.Safe.from_string ans |> YoUtil.drop_assoc |> List.assoc "data" with
     | `List[]  -> OK None
     | `List xs when List.length xs > 1  -> Error "Too many results"
     | `List[`List[ `Int _ts; `Int id] ] ->  OK (Some (_ts,id) )
@@ -143,26 +143,8 @@ let () =
   make_nodes events
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+(*
+  Local variables:
+  compile-command: "make -C .."
+  End:
+ *)

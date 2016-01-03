@@ -14,7 +14,7 @@ module API = Neorest.Make(struct let server="localhost" let port=7474 end)
 let next_year : int -> (int option,_) Result.t = fun cur ->
   let next_cmd = "MATCH (years:YEAR) WHERE years.year > {y} RETURN min(years.year)" in
   let (ans: string) = API.post_cypher ~params:["y", `Int cur] next_cmd in
-  match to_json ans |> YoUtil.drop_assoc |> List.assoc "data" with
+  match Yojson.Safe.from_string ans |> YoUtil.drop_assoc |> List.assoc "data" with
   | `List[`List[`Null]] -> OK None
   | `List[`List[`Int x]]->
 	Printf.printf "next year %d\n%!" x;
@@ -24,7 +24,7 @@ let next_year : int -> (int option,_) Result.t = fun cur ->
 let prev_year : int -> (int option,_) Result.t = fun cur ->
   let next_cmd = "MATCH (years:YEAR) WHERE years.year < {y} RETURN max(years.year)" in
   let (ans: string) = API.post_cypher ~params:["y", `Int cur] next_cmd in
-  match to_json ans |> YoUtil.drop_assoc |> List.assoc "data" with
+  match Yojson.Safe.from_string ans |> YoUtil.drop_assoc |> List.assoc "data" with
   | `List[`List[`Null]] -> OK None
   | `List[`List[`Int x]]->
 	Printf.printf "prev year %d\n%!" x;
@@ -39,7 +39,7 @@ let connect_years from dest =
              " in
   let (ans: string) = API.post_cypher ~params:[ ("ll", `Int from); ("rr",`Int dest) ] cmd in
   print_endline ans;
-  match to_json ans |> YoUtil.drop_assoc |> List.assoc "data" with
+  match Yojson.Safe.from_string ans |> YoUtil.drop_assoc |> List.assoc "data" with
   | `List[`List[_]] -> OK ()
   | _ -> Error ()
 
@@ -101,26 +101,8 @@ let () =
   make_nodes events
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+(*
+  Local variables:
+  compile-command: "make -C .."
+  End:
+ *)

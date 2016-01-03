@@ -23,7 +23,56 @@ type options = {
 
 module type CONFIG = sig val server:string val port:int end
 
-module Make(Cfg: CONFIG) = struct
+module type API =
+sig
+  val make_empty_node : unit -> (int, unit) Helpers.Result.t
+  val get_node : int -> string
+  val node_properties : int -> string
+  val labels : unit -> string
+  val add_label : int -> string -> unit
+  type cypher_msg = string
+  val string_of_cypher_msg : cypher_msg -> cypher_msg
+  val post_cypher :
+    ?params:(string * Yojson.json) list -> string -> string
+  val wrap_cypher :
+    ?verbose:bool ->
+    string ->
+    params:(string * Yojson.json) list -> f:(Yojson.json -> 'a) -> 'a
+  val remove_all : unit -> (unit, 'a) Helpers.Result.t
+  val insert_node_between : int -> string
+  class node_of_json :
+    (string * Yojson.json) list ->
+    object
+      method data : Yojson.json
+      method id : int
+      method json : (string * Yojson.json) list
+      method prop : string -> Yojson.json
+    end
+  class date_of_json :
+    (string * Yojson.json) list ->
+    object
+      method data : Yojson.json
+      method id : int
+      method json : (string * Yojson.json) list
+      method when_ : string
+    end
+  class question_of_json :
+    (string * Yojson.json) list ->
+    object
+      method data : Yojson.json
+      method id : int
+      method json : (string * Yojson.json) list
+      method prop : string -> string
+      method text : string
+    end
+  val get_questions :
+    int -> (question_of_json list, string) Helpers.Result.t
+  val get_next_timeline_node :
+    int -> (node_of_json, string) Helpers.Result.t
+  val id_from_node_json : (string * [> `String of string ]) list -> int64
+end
+
+module Make(Cfg: CONFIG) : API = struct
 
 let make_empty_node () : (_,_) Result.t =
   let url = sprintf "http://%s:%d/db/data/node/" Cfg.server Cfg.port in
@@ -206,3 +255,9 @@ let id_from_node_json ej =
   | _ -> failwith "Wrong json for function id_from_node_json"
 
 end
+
+(*
+  Local variables:
+  compile-command: "make -C .."
+  End:
+ *)
