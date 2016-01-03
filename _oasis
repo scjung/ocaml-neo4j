@@ -16,6 +16,7 @@ Library neolib
 
 Executable demo1
   Path:           tests
+  Build$:         flag(tests)
   BuildTools:     ocamlbuild
   BuildDepends:   neolib,calendar
   CompiledObject: byte
@@ -23,6 +24,7 @@ Executable demo1
 
 Executable demo2
   Path:           tests
+  Build$:         flag(tests)
   BuildTools:     ocamlbuild
   BuildDepends:   neolib,calendar
   CompiledObject: byte
