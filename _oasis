@@ -14,6 +14,10 @@ Library neolib
   Path:         src
   Modules:      Neorest,Helpers,Result
 
+Test demo1
+  TestTools: demo1
+  Command:   $demo1
+
 Executable demo1
   Path:           tests
   Build$:         flag(tests)
@@ -21,6 +25,10 @@ Executable demo1
   BuildDepends:   neolib,calendar
   CompiledObject: byte
   MainIs:         tree.ml
+
+Test demo2
+  TestTools: demo2
+  Command:   $demo2
 
 Executable demo2
   Path:           tests
