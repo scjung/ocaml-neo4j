@@ -5,9 +5,12 @@ sig
   val unwrap_res : Yojson.Safe.json -> Yojson.Safe.json
 end
 
-type options = { server : string; port : int; }
-
-module type CONFIG = sig val server : string val port : int end
+module type CONFIG =
+sig
+  val server : string
+  val port : int
+  val auth : (string * string) option
+end
 
 module type API =
 sig

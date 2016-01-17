@@ -1,6 +1,6 @@
 PKG yojson
 PKG netclient
-PKG calendar
+PKG base64
 
 SRC src
 B _build/src
