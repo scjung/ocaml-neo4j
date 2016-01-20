@@ -3,9 +3,6 @@ open Printf
 let string_of_char = String.make 1
 let failwiths fmt = failwith (sprintf fmt)
 
-module Result = Result
-type ('a,'b) result = ('a,'b) Result.t
-
 module Option = struct
   let map ~f = function Some x -> Some (f x) | None -> None
   let value ~f ~default = function Some x -> f x | None -> default
