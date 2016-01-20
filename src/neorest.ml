@@ -1,13 +1,11 @@
 open Result
 
-module List = Helpers.List
-module String = Helpers.String
+module List        = Helpers.List
+module String      = Helpers.String
 module Http_client = Nethttp_client
-module Yojson = Yojson.Safe
+module Json        = Yojson.Safe
 
 let sprintf = Printf.sprintf
-
-let print_json = Yojson.pretty_to_channel stdout
 
 module YoUtil = struct
   let drop_assoc = function `Assoc xs -> xs | _ -> failwith "Bad argument"
@@ -25,21 +23,27 @@ module type API =
 sig
   type path = string
 
-  val get : path -> (string, string) Result.t
-  val post : path -> string -> (Http_client.http_call -> unit) -> (string, string) Result.t
+  val get : path -> (Yojson.Safe.json, string) Result.t
+  val post : path -> string -> (Http_client.http_call -> unit)
+    -> (Yojson.Safe.json, string) Result.t
 
   val make_empty_node : unit -> (int, string) Result.t
-  val get_node : int -> (string, string) Result.t
-  val node_properties : int -> (string, string) Result.t
-  val labels : unit -> (string, string) Result.t
+
+  val get_node : int -> (Yojson.Safe.json, string) Result.t
+
+  val node_properties : int -> (Yojson.Safe.json, string) Result.t
+
+  val labels : unit -> (Yojson.Safe.json, string) Result.t
+
   val add_label : int -> string -> (unit, string) Result.t
 
   val cypher :
-    ?params:(string * Yojson.json) list -> string -> (string, string) Result.t
+    ?params:(string * Yojson.Safe.json) list -> string
+    -> (Yojson.Safe.json, string) Result.t
 
   val wrap_cypher :
     ?verbose:bool -> string
-    -> params:(string * Yojson.json) list -> f:(Yojson.json -> 'a)
+    -> params:(string * Yojson.Safe.json) list -> f:(Yojson.Safe.json -> 'a)
     -> ('a, string) Result.t
 
   val remove_all : unit -> (unit, 'a) Result.t
@@ -70,7 +74,7 @@ let get path =
   pipeline#add req;
   pipeline#run ();
   match req#response_status with
-  | `Ok -> OK req#response_body#value
+  | `Ok -> OK (Json.from_string req#response_body#value)
   | s   -> Error (Nethttp.string_of_http_status s)
 
 let post path post callback =
@@ -80,18 +84,16 @@ let post path post callback =
   pipeline#add_with_callback req callback;
   pipeline#run ();
   match req#response_status with
-  | `Ok -> OK req#response_body#value
+  | `Ok -> OK (Json.from_string req#response_body#value)
   | s   -> Error (Nethttp.string_of_http_status s)
 
 let make_empty_node () : (_,_) Result.t =
   get "db/data/node/"
-  >>= (fun rsp ->
-    match Yojson.from_string rsp with
-    | `Assoc xs -> OK (List.Assoc.find_exn xs "self")
-    | _ -> Error "field not found: self"
-  ) >>= (
-    fun url ->
-      OK (int_of_string @@ String.rsplit (Yojson.to_string url) ~by:'/')
+  >>= (function
+      | `Assoc xs -> OK (List.Assoc.find_exn xs "self")
+      | _ -> Error "field not found: self"
+  ) >>= (fun url ->
+      OK (int_of_string @@ String.rsplit (Json.to_string url) ~by:'/')
   )
 
 let get_node nodeid =
@@ -109,7 +111,7 @@ let add_label id label =
 
 let cypher ?(params=[]) query =
   let data =
-    Yojson.to_string (`Assoc [
+    Json.to_string (`Assoc [
         ("query",  `String query);
         ("params", `Assoc params)
       ])
@@ -118,7 +120,7 @@ let cypher ?(params=[]) query =
       match call#response_status with
       | `Ok -> ()
       | `Bad_request ->
-          let j = Yojson.from_string call#response_body#value in
+          let j = Json.from_string call#response_body#value in
           j |> YoUtil.drop_assoc |> List.assoc "message"
           |> YoUtil.drop_string |> print_endline;
       | _ ->
@@ -128,10 +130,8 @@ let cypher ?(params=[]) query =
     )
 
 let wrap_cypher ?(verbose=true) cmd ~params ~f =
-  cypher ~params cmd >>= (fun ans ->
-      if verbose then print_endline ans;
-      OK (ans |> Yojson.from_string |> YoUtil.drop_assoc |> List.assoc "data" |> f)
-    )
+  cypher ~params cmd >>=
+    (fun json -> json |> YoUtil.drop_assoc |> List.assoc "data" |> f |> ok)
 
 let remove_all () : (_,_) Result.t =
   let _ =
