@@ -6,4 +6,4 @@ let (>>=) x f = match x with
 
 let (>>>) x f = match x with OK a -> OK (f a) | Error b -> Error b
 
-let ok x = OK x
+let return x = OK x

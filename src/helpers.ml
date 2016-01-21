@@ -14,9 +14,8 @@ module Option = struct
 end
 
 module List = struct
-  include ListLabels
   module Assoc = struct
-    let find_exn xs x = assoc x xs
+    let find_exn xs x = List.assoc x xs
     let find     xs x = try Some (find_exn xs x) with Not_found  -> None
   end
   let hd_exn = function
@@ -30,18 +29,18 @@ module List = struct
     | x::xs -> last_exn xs
     | [] -> failwith "Bad argument of last_exn"
 
-  let find_exn = find
+  let find_exn = List.find
   let find ~f xs =
     try Some (find_exn ~f xs)
     with Not_found -> None
 
   let map ~f xs = List.map f xs
   let filter_map ~f xs =
-    fold_left ~init:[] ~f:(fun acc x -> match f x with Some y -> y::acc | None -> acc) xs
+    ListLabels.fold_left ~init:[] ~f:(fun acc x -> match f x with Some y -> y::acc | None -> acc) xs
 
   let concat_strings ~sep ~f xs =
     let b = Buffer.create 100 in
-    iter xs ~f:(fun item -> Buffer.add_string b (f item); Buffer.add_char b sep);
+    ListLabels.iter xs ~f:(fun item -> Buffer.add_string b (f item); Buffer.add_char b sep);
     Buffer.contents b
 
   let to_string ~f xs =
