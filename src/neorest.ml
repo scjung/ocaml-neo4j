@@ -62,7 +62,7 @@ sig
 
     val get : int -> t list call
 
-    val get_nodes : ?properties:(string * string) list -> t -> Node.t list call
+    val get_nodes : ?property:(string * string) -> t -> Node.t list call
 
     val list : t list call
   end
@@ -443,8 +443,15 @@ struct
     let get id =
       _get (sprintf "node/%d/labels" id) labels_from_rsp
 
-    let get_nodes ?properties label = (* TODO: with properties *)
-      _get (sprintf "label/%s/nodes" label)
+    let get_nodes ?property label =
+      let param =
+        match property with
+        | None        -> ""
+        | Some (k, v) ->
+            "?" ^ Netencoding.Url.(encode k ^ "=" ^ encode ("\"" ^ v ^ "\""))
+      in
+      print_endline param;
+      _get (sprintf "label/%s/nodes%s" label param)
         Json.(fun _ json -> some_of json >>= list >>= lmap Node.from_json)
 
     let list =
