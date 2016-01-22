@@ -9,23 +9,23 @@ module type API =
 sig
   type path = string
 
-  type 'a req
+  type 'a call
 
   type error =
     | Error_rsp of Nethttp.http_status * Yojson.Safe.json option
     | Invalid_json of string
-    | Malformed_json of string
+    | Malformed_rsp of string
     | Unexpected of string
 
   type 'a result = ('a, error) Result.t
 
-  val and_then : ('a -> 'b result) -> 'a req -> 'b req
+  val and_then : ('a -> 'b result) -> 'a call -> 'b call
 
-  val batch : (int * 'a req) list -> (int * 'a) list req
+  val batch : (int * 'a call) list -> (int * 'a) list call
 
-  val execute : 'a req -> ('a, error) Result.t
+  val execute : 'a call -> ('a, error) Result.t
 
-  val version : string req
+  val version : string call
 
   (** {3 Front-end APIs} *)
 
@@ -39,28 +39,28 @@ sig
       properties : (string * string) list;
     }
 
-    val create : ?properties:(string * string) list -> unit -> t req
+    val create : ?properties:(string * string) list -> unit -> t call
 
-    val get : int -> t req
+    val get : int -> t call
 
-    val delete : int -> t req
+    val delete : int -> t call
   end
 
   module Label :
   sig
     type t = string
 
-    val add : int -> t list -> unit req
+    val add : int -> t list -> unit call
 
-    val replace : int -> t list -> unit req
+    val replace : int -> t list -> unit call
 
-    val remove : int -> t -> unit req
+    val remove : int -> t -> unit call
 
-    val get : int -> t list req
+    val get : int -> t list call
 
-    val get_nodes : ?properties:(string * string) list -> t -> Node.t list req
+    val get_nodes : ?properties:(string * string) list -> t -> Node.t list call
 
-    val list : t list req
+    val list : t list call
   end
 
   module Relationship :
@@ -73,35 +73,103 @@ sig
       typ : typ
     }
 
-    val get : id -> t req
+    val get : id -> t call
 
     val create : ?properties:(string * string) list -> from:Node.id -> Node.id -> typ
-      -> t req
+      -> t call
 
-    val delete : id -> unit req
+    val delete : id -> unit call
 
-    val properties : id -> (string * string) list req
+    val properties : id -> (string * string) list call
 
-    val set_properties : id -> (string * string) list -> unit req
+    val set_properties : id -> (string * string) list -> unit call
 
-    val property : id -> string -> string req
+    val property : id -> string -> string call
 
-    val set_property : id -> string -> string -> unit req
+    val set_property : id -> string -> string -> unit call
 
-    val of_node : ?types:string list -> Node.id -> [`In_out | `In | `Out] -> t list req
+    val of_node : ?types:string list -> Node.id -> [`In_out | `In | `Out] -> t list call
+  end
+
+  module Cypher :
+  sig
+    type stmt = string
+    type param = (string * Yojson.Safe.json) list
+
+    (** Statement, its parameters, and includeStats. *)
+    type query = stmt * param * [`Stats | `REST | `Row | `Graph] list
+
+    type stats = {
+      contains_updates : bool;
+      nodes_created : int;
+      nodes_deleted : int;
+      properties_set : int;
+      relationships_created : int;
+      relationship_deleted : int;
+      labels_added : int;
+      labels_removed : int;
+      indexes_added : int;
+      indexes_removed : int;
+      constraints_added : int;
+      constraints_removed : int;
+    }
+
+    type data = {
+      row : Yojson.Safe.json list option;
+      graph : Yojson.Safe.json option;
+      rest : Yojson.Safe.json option;
+    }
+
+    type result = {
+      columns : string list;
+      data : data list;
+      stats : stats option;
+    }
+
+    type error = {
+      code : string;
+      message : string
+    }
+
+    type rsp = result list * error list
+
+    type transaction
+
+    val execute : query list -> rsp call
+
+    val begin_transaction : query list -> (rsp * transaction) call
+
+    val execute_in_transaction :
+      query list -> transaction -> (rsp * transaction) call
+
+    val reset_timeout : transaction -> transaction call
+
+    val commit : query list -> transaction -> rsp call
+
+    val rollback : transaction -> rsp call
+
+    (** {3 Predefined queries} *)
+
+    val delete_all_relationships : query
+
+    val delete_all_nodes : query
   end
 
   (** {3 APIs under the hood} *)
 
-  val _get : path -> (Yojson.Safe.json option -> 'a result) -> 'a req
+  val _get : path
+    -> (string option -> Yojson.Safe.json option -> 'a result) -> 'a call
 
-  val _delete : path -> (Yojson.Safe.json option -> 'a result) -> 'a req
+  val _delete : path
+    -> (string option -> Yojson.Safe.json option -> 'a result) -> 'a call
 
   val _post :
-    path -> ?data:Yojson.Safe.json -> (Yojson.Safe.json option -> 'a result) -> 'a req
+    path -> ?data:Yojson.Safe.json
+    -> (string option -> Yojson.Safe.json option -> 'a result) -> 'a call
 
   val _put :
-    path -> ?data:Yojson.Safe.json -> (Yojson.Safe.json option -> 'a result) -> 'a req
+    path -> ?data:Yojson.Safe.json
+    -> (string option -> Yojson.Safe.json option -> 'a result) -> 'a call
 end
 
 module Make : functor (Cfg : CONFIG) -> API
