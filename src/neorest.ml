@@ -311,7 +311,7 @@ struct
   let auth =
     match Cfg.auth with
     | None              -> None
-    | Some (user, pass) -> Some (B64.encode (user ^ ":" ^ pass))
+    | Some (user, pass) -> Some (Netencoding.Base64.encode (user ^ ":" ^ pass))
 
   let get_uri path = sprintf "http://%s:%d/db/data/%s" Cfg.server Cfg.port path
 

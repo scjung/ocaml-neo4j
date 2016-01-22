@@ -10,8 +10,7 @@ Library neolib
   BuildTools:   ocamlbuild
   BuildDepends:
     netclient (>= 4.0.0),
-    yojson,
-    base64 (>= 2.0.0)
+    yojson
   Path:         src
   Modules:      Neorest,Helpers,Result
 
