@@ -58,7 +58,7 @@ sig
 
     val get : int -> t list call
 
-    val get_nodes : ?properties:(string * string) list -> t -> Node.t list call
+    val get_nodes : ?property:(string * string) -> t -> Node.t list call
 
     val list : t list call
   end
