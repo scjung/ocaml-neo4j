@@ -25,6 +25,8 @@ sig
 
   val execute : 'a call -> ('a, error) Result.t
 
+  val root : (string * Yojson.Safe.json) list call
+
   val version : string call
 
   (** {3 Front-end APIs} *)
@@ -69,6 +71,20 @@ sig
     val get : int -> t call
 
     val delete : int -> t call
+
+    val set_property : int -> Property.k -> Property.v -> unit call
+
+    val update_properties : int -> Property.t -> unit call
+
+    val get_properties : int -> Property.t call
+
+    val get_property : int -> Property.k -> Property.v call
+
+    val delete_properties : int -> unit call
+
+    val delete_property : int -> Property.k -> unit call
+
+    val degree : ?types:string list -> id -> [`In_out | `In | `Out] -> int call
   end
 
   module Label :
@@ -104,15 +120,21 @@ sig
 
     val delete : id -> unit call
 
-    val properties : id -> (string * string) list call
+    val properties : id -> Property.t call
 
-    val set_properties : id -> (string * string) list -> unit call
+    val set_properties : id -> Property.t -> unit call
 
-    val property : id -> string -> string call
+    val delete_properties : id -> unit call
 
-    val set_property : id -> string -> string -> unit call
+    val delete_property : id -> Property.k -> unit call
+
+    val property : id -> Property.k -> Property.v call
+
+    val set_property : id -> Property.k -> Property.v -> unit call
 
     val of_node : ?types:string list -> Node.id -> [`In_out | `In | `Out] -> t list call
+
+    val types : unit -> string list call
   end
 
   module Cypher :
