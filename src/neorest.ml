@@ -31,6 +31,8 @@ sig
 
   val execute : 'a call -> ('a, error) Result.t
 
+  val root : (string * Yojson.Safe.json) list call
+
   val version : string call
 
   module Property :
@@ -73,6 +75,20 @@ sig
     val get : int -> t call
 
     val delete : int -> t call
+
+    val set_property : int -> Property.k -> Property.v -> unit call
+
+    val update_properties : int -> Property.t -> unit call
+
+    val get_properties : int -> Property.t call
+
+    val get_property : int -> Property.k -> Property.v call
+
+    val delete_properties : int -> unit call
+
+    val delete_property : int -> Property.k -> unit call
+
+    val degree : ?types:string list -> id -> [`In_out | `In | `Out] -> int call
   end
 
   module Label :
@@ -109,15 +125,21 @@ sig
 
     val delete : id -> unit call
 
-    val properties : id -> (string * string) list call
+    val properties : id -> Property.t call
 
-    val set_properties : id -> (string * string) list -> unit call
+    val set_properties : id -> Property.t -> unit call
 
-    val property : id -> string -> string call
+    val delete_properties : id -> unit call
 
-    val set_property : id -> string -> string -> unit call
+    val delete_property : id -> Property.k -> unit call
+
+    val property : id -> Property.k -> Property.v call
+
+    val set_property : id -> Property.k -> Property.v -> unit call
 
     val of_node : ?types:string list -> Node.id -> [`In_out | `In | `Out] -> t list call
+
+    val types : unit -> string list call
   end
 
   module Cypher :
@@ -395,9 +417,12 @@ struct
         else
           Json.from_string v >>= (fun json -> Error (Error_rsp (s, Some json)))
 
+  let root =
+    _get "" (fun _ json -> Json.(some_of json >>= assoc))
+
   let version =
     _get "" (fun _ json ->
-        Json.(some_of json >>= assoc >>= field "neo4j_version" >>= string >>= return)
+        Json.(some_of json >>= assoc >>= field "neo4j_version" >>= string)
       )
 
   module Property =
@@ -491,6 +516,47 @@ struct
 
     let delete id =
       _delete (sprintf "node/%d/" id) from_rsp
+
+    let set_property id k v =
+      _put (sprintf "node/%d/properties/%s" id k)
+        ~data:(Property.v_to_json v)
+        (fun _ _ -> OK ())
+
+    let update_properties id t =
+      _put (sprintf "node/%d/properties" id)
+        ~data:(Property.to_json t)
+        (fun _ _ -> OK ())
+
+    let get_properties id =
+      _get (sprintf "node/%d/properties" id)
+        (fun _ json -> Json.some_of json >>= Property.from_json)
+
+    let get_property id k =
+      _get (sprintf "node/%d/properties/%s" id k)
+        (fun _ json -> Json.some_of json >>= Property.v_from_json)
+
+    let delete_properties id =
+      _delete (sprintf "node/%d/properties" id)
+        (fun _ _ -> OK ())
+
+    let delete_property id k =
+      _delete (sprintf "node/%d/properties/%s" id k)
+        (fun _ _ -> OK ())
+
+    let degree ?(types = []) id t =
+      let path =
+        sprintf "node/%d/degree/%s%s" id
+          (match t with
+           | `In_out -> "all"
+           | `In     -> "in"
+           | `Out    -> "out"
+          )
+          (match types with
+           | [] -> ""
+           | l  -> "/" ^ String.concat "&" types
+          )
+      in
+      _get path (fun _ json -> Json.(some_of json >>= int))
   end
 
   module Label =
@@ -583,20 +649,28 @@ struct
 
     let properties id =
       _get (sprintf "relationship/%d/properties" id)
-        Json.(fun _ json -> some_of json >>= assoc >>= vmap string)
+        Json.(fun _ json -> some_of json >>= Property.from_json)
 
     let set_properties id properties =
       _put (sprintf "relationship/%d/properties" id)
-        ~data:(`Assoc (List.map (fun (k, v) -> (k, `String v)) properties))
+        ~data:(Property.to_json properties)
+        (fun _ _ -> OK ())
+
+    let delete_properties id =
+      _delete (sprintf "relationship/%d/properties" id)
+        (fun _ _ -> OK ())
+
+    let delete_property id k =
+      _delete (sprintf "relationship/%d/properties/%s" id k)
         (fun _ _ -> OK ())
 
     let property id p =
       _get (sprintf "relationship/%d/properties/%s" id p)
-        Json.(fun _ json -> some_of json >>= string)
+        Json.(fun _ json -> some_of json >>= Property.v_from_json)
 
     let set_property id k v =
       _put (sprintf "relationship/%d/properties/%s" id k)
-        ~data:(`String v)
+        ~data:(Property.v_to_json v)
         Json.(fun _ _ -> OK ())
 
     let of_node ?(types = []) id t =
@@ -613,6 +687,10 @@ struct
       in
       _get (sprintf "node/%d/relationships/%s%s" id t types)
         Json.(fun _ json -> some_of json >>= list >>= lmap from_json)
+
+    let types () =
+      _get "relationship/types"
+        Json.(fun _ json -> some_of json >>= list >>= lmap string)
   end
 
   module Cypher =
