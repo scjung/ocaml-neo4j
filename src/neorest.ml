@@ -33,6 +33,31 @@ sig
 
   val version : string call
 
+  module Property :
+  sig
+    type k = string
+
+    type basic_v = [
+      | `Bool of bool
+      | `Float of float
+      | `Int of int
+      | `Intlit of string
+      | `String of string
+    ]
+
+    type v = [ basic_v | `List of basic_v list ]
+
+    type kv = k * v
+
+    type t = kv list
+
+    val v_from_json : Yojson.Safe.json -> v result
+
+    val from_json : Yojson.Safe.json -> t result
+
+    val keys : unit -> k list call
+  end
+
   module Node :
   sig
     type id = int
@@ -40,10 +65,10 @@ sig
     type t = {
       id : id;
       labels : string list;
-      properties : (string * string) list;
+      property : Property.t
     }
 
-    val create : ?properties:(string * string) list -> unit -> t call
+    val create : ?property:Property.t -> unit -> t call
 
     val get : int -> t call
 
@@ -62,7 +87,7 @@ sig
 
     val get : int -> t list call
 
-    val get_nodes : ?property:(string * string) -> t -> Node.t list call
+    val get_nodes : ?property:Property.kv -> t -> Node.t list call
 
     val list : t list call
   end
@@ -79,7 +104,7 @@ sig
 
     val get : id -> t call
 
-    val create : ?properties:(string * string) list -> from:Node.id -> Node.id -> typ
+    val create : ?property:Property.t -> from:Node.id -> Node.id -> typ
       -> t call
 
     val delete : id -> unit call
@@ -375,6 +400,60 @@ struct
         Json.(some_of json >>= assoc >>= field "neo4j_version" >>= string >>= return)
       )
 
+  module Property =
+  struct
+    type k = string
+
+    type basic_v = [
+      | `Bool of bool
+      | `Float of float
+      | `Int of int
+      | `Intlit of string
+      | `String of string
+    ]
+
+    type v = [ basic_v | `List of basic_v list ]
+
+    type kv = k * v
+
+    type t = kv list
+
+    let rec basic_v_from_json : Json.json -> basic_v result = function
+      | `Bool b    -> OK (`Bool b)
+      | `Float f   -> OK (`Float f)
+      | `Int i     -> OK (`Int i)
+      | `Intlit i  -> OK (`Intlit i)
+      | `String s  -> OK (`String s)
+      | `List l    -> Error (Invalid_json "nested list is not allowed for property value")
+      | `Assoc _   -> Error (Invalid_json "object is not allowed for property value")
+      | `Null      -> Error (Invalid_json "null is not allowed for property value")
+      | `Tuple _   -> Error (Invalid_json "tuple is not allowed for property value")
+      | `Variant _ -> Error (Invalid_json "variant is not allowed for property value")
+
+    let rec v_from_json : Json.json -> v result = function
+      | `Bool b    -> OK (`Bool b)
+      | `Float f   -> OK (`Float f)
+      | `Int i     -> OK (`Int i)
+      | `Intlit i  -> OK (`Intlit i)
+      | `String s  -> OK (`String s)
+      | `List l    -> Json.lmap basic_v_from_json l >>= (fun l -> OK (`List l))
+      | `Assoc _   -> Error (Invalid_json "object is not allowed for property value")
+      | `Null      -> Error (Invalid_json "null is not allowed for property value")
+      | `Tuple _   -> Error (Invalid_json "tuple is not allowed for property value")
+      | `Variant _ -> Error (Invalid_json "variant is not allowed for property value")
+
+    let v_to_json (v : v) : Json.json = (v :> Json.json)
+
+    let from_json json = Json.(assoc json >>= vmap v_from_json)
+
+    let to_json (t : t) : Json.json =
+      `Assoc (List.map (fun (k, (v : v)) -> (k, (v :> Json.json))) t)
+
+    let keys () =
+      _get "propertykeys"
+        (fun _ json -> Json.(some_of json >>= list >>= lmap string))
+  end
+
   module Node =
   struct
     type id = int
@@ -382,7 +461,7 @@ struct
     type t = {
       id : id;
       labels : string list;
-      properties : (string * string) list;
+      property : Property.t
     }
 
     let from_json json =
@@ -391,19 +470,19 @@ struct
       >>= (fun top -> field "metadata" top >>= assoc
       >>= (fun metadata -> field "id" metadata >>= int
       >>= (fun id -> field ~def:nil "labels" metadata >>= list >>= lmap string
-      >>= (fun labels -> field ~def:empty "data" top >>= assoc >>= vmap string
-      >>= (fun properties ->
-            OK { id; labels; properties }
+      >>= (fun labels -> field ~def:empty "data" top >>= Property.from_json
+      >>= (fun property ->
+            OK { id; labels; property }
       )))))
 
     let from_rsp _ json =
       Json.some_of json >>= from_json
 
-    let create ?(properties = []) () =
+    let create ?(property = []) () =
       let data =
-        match properties with
+        match property with
         | [] -> None
-        | ps -> Some (`Assoc (List.map (fun (k, v) -> (k, `String v)) ps))
+        | ps -> Some (Property.to_json ps)
       in
       _post "node" ?data from_rsp
 
@@ -448,7 +527,9 @@ struct
         match property with
         | None        -> ""
         | Some (k, v) ->
-            "?" ^ Netencoding.Url.(encode k ^ "=" ^ encode ("\"" ^ v ^ "\""))
+            "?" ^ Netencoding.Url.(
+                encode k ^ "=" ^ encode (Json.to_string (Property.v_to_json v))
+              )
       in
       print_endline param;
       _get (sprintf "label/%s/nodes%s" label param)
@@ -484,16 +565,15 @@ struct
     let get id =
       _get (sprintf "relationship/%d" id) from_rsp
 
-    let create ?properties ~from _to typ =
+    let create ?property ~from _to typ =
       let data =
         `Assoc ([
             ("to", `String (get_uri (sprintf "node/%d" _to)));
             ("type", `String typ);
           ] @ (
-              match properties with
+              match property with
               | None    -> []
-              | Some ps ->
-                  [("data", `Assoc (List.map (fun (k, v) -> (k, `String v)) ps))]
+              | Some ps -> [("data", Property.to_json ps)]
             ))
       in
       _post (sprintf "node/%d/relationships" from) ~data from_rsp
