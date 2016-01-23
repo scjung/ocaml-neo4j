@@ -29,6 +29,31 @@ sig
 
   (** {3 Front-end APIs} *)
 
+  module Property :
+  sig
+    type k = string
+
+    type basic_v = [
+      | `Bool of bool
+      | `Float of float
+      | `Int of int
+      | `Intlit of string
+      | `String of string
+    ]
+
+    type v = [ basic_v | `List of basic_v list ]
+
+    type kv = k * v
+
+    type t = kv list
+
+    val v_from_json : Yojson.Safe.json -> v result
+
+    val from_json : Yojson.Safe.json -> t result
+
+    val keys : unit -> k list call
+  end
+
   module Node :
   sig
     type id = int
@@ -36,10 +61,10 @@ sig
     type t = {
       id : id;
       labels : string list;
-      properties : (string * string) list;
+      property : Property.t;
     }
 
-    val create : ?properties:(string * string) list -> unit -> t call
+    val create : ?property:Property.t -> unit -> t call
 
     val get : int -> t call
 
@@ -58,7 +83,7 @@ sig
 
     val get : int -> t list call
 
-    val get_nodes : ?property:(string * string) -> t -> Node.t list call
+    val get_nodes : ?property:Property.kv -> t -> Node.t list call
 
     val list : t list call
   end
@@ -75,8 +100,7 @@ sig
 
     val get : id -> t call
 
-    val create : ?properties:(string * string) list -> from:Node.id -> Node.id -> typ
-      -> t call
+    val create : ?property:Property.t -> from:Node.id -> Node.id -> typ -> t call
 
     val delete : id -> unit call
 
