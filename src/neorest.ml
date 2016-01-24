@@ -19,9 +19,11 @@ sig
 
   type error =
     | Error_rsp of Nethttp.http_status * Yojson.Safe.json option
-    | Invalid_json of string
+    | Invalid_json of string * Yojson.Safe.json
     | Malformed_rsp of string
     | Unexpected of string
+
+  val error_to_string : error -> string
 
   type 'a result = ('a, error) Result.t
 
@@ -217,19 +219,43 @@ sig
   val _put :
     path -> ?data:Yojson.Safe.json
     -> (string option -> Yojson.Safe.json option -> 'a result) -> 'a call
+
+  val debug : bool ref
+
+  val print_debug : (string -> unit) ref
 end
 
 module Make(Cfg: CONFIG) : API =
 struct
+  let debug = ref false
+
+  let print_debug = ref prerr_endline
+
   (* Paths should be relative to data-API URI. For instance, the path string of
      "http://localhost:7474/db/data/node" should be "node" (no leading '/'). *)
   type path = string
 
   type error =
     | Error_rsp of Nethttp.http_status * Yojson.Safe.json option
-    | Invalid_json of string
+    | Invalid_json of string * Yojson.Safe.json
     | Malformed_rsp of string
     | Unexpected of string
+
+  let error_to_string = function
+    | Error_rsp (s, None) -> "Error_rsp: " ^ Nethttp.string_of_http_status s
+
+    | Error_rsp (s, Some j) ->
+        "Error_rsp: " ^ Nethttp.string_of_http_status s ^ ": "
+        ^ Yojson.Safe.to_string j
+
+    | Invalid_json (s, j) ->
+        "Invalid_json: " ^ s ^ ": " ^ Yojson.Safe.to_string j
+
+    | Malformed_rsp s ->
+        "Malformed_rsp: " ^ s
+
+    | Unexpected s ->
+        "Unexpected: " ^ s
 
   type 'a result = ('a, error) Result.t
 
@@ -248,27 +274,27 @@ struct
 
     let some_of = function
       | Some x -> OK x
-      | None -> Error (Invalid_json "expects something")
+      | None -> Error (Malformed_rsp "no json returned")
 
     let int = function
       | `Int i -> OK i
-      | _ -> Error (Invalid_json "expects int")
+      | j -> Error (Invalid_json ("expects int", j))
 
     let bool = function
       | `Bool b -> OK b
-      | _ -> Error (Invalid_json "expects bool")
+      | j -> Error (Invalid_json ("expects bool", j))
 
     let string : json -> string result = function
       | `String s -> OK s
-      | _ -> Error (Invalid_json "expects string")
+      | j -> Error (Invalid_json ("expects string", j))
 
     let list : json -> json list result = function
       | `List l -> OK l
-      | _ -> Error (Invalid_json "expects list")
+      | j -> Error (Invalid_json ("expects list", j))
 
     let assoc = function
       | `Assoc assoc -> OK assoc
-      | _ -> Error (Invalid_json "expects object")
+      | j -> Error (Invalid_json ("expects object", j))
 
     let field ?def f obj : json result =
       try
@@ -276,7 +302,7 @@ struct
       with
       | Not_found ->
           match def with
-          | None   -> Error (Invalid_json ("field not found: " ^ f))
+          | None   -> Error (Invalid_json ("field not found: " ^ f, `Assoc obj))
           | Some d -> OK d
 
     let opt_field f obj : json option result =
@@ -377,11 +403,15 @@ struct
     let (req, f) =
       match r with
       | Get (path, f) ->
-          let req = new Http_client.get (get_uri path) in
+          let uri = get_uri path in
+          if !debug then !print_debug ("GET: " ^ uri);
+          let req = new Http_client.get uri in
           (req, f)
 
       | Delete (path, f) ->
-          let req = new Http_client.delete (get_uri path) in
+          let uri = get_uri path in
+          if !debug then !print_debug ("DELETE: " ^ uri);
+          let req = new Http_client.delete uri in
           (req, f)
 
       | Post (path, json, f) ->
@@ -390,7 +420,9 @@ struct
             | None      -> ""
             | Some json -> Json.to_string json
           in
-          let req = new Http_client.post_raw (get_uri path) data in
+          let uri = get_uri path in
+          if !debug then !print_debug ("POST: " ^ uri ^ ": " ^ data);
+          let req = new Http_client.post_raw uri data in
           (req, f)
 
       | Put (path, json, f) ->
@@ -399,7 +431,9 @@ struct
             | None      -> ""
             | Some json -> Json.to_string json
           in
-          let req = new Http_client.put (get_uri path) data in
+          let uri = get_uri path in
+          if !debug then !print_debug ("PUT: " ^ uri ^ ": " ^ data);
+          let req = new Http_client.put uri data in
           (req, f)
     in
     set_req_header req;
@@ -447,29 +481,40 @@ struct
 
     type t = kv list
 
-    let rec basic_v_from_json : Json.json -> basic_v result = function
+    let rec basic_v_from_json j : basic_v result =
+      match j with
       | `Bool b    -> OK (`Bool b)
       | `Float f   -> OK (`Float f)
       | `Int i     -> OK (`Int i)
       | `Intlit i  -> OK (`Intlit i)
       | `String s  -> OK (`String s)
-      | `List l    -> Error (Invalid_json "nested list is not allowed for property value")
-      | `Assoc _   -> Error (Invalid_json "object is not allowed for property value")
-      | `Null      -> Error (Invalid_json "null is not allowed for property value")
-      | `Tuple _   -> Error (Invalid_json "tuple is not allowed for property value")
-      | `Variant _ -> Error (Invalid_json "variant is not allowed for property value")
+      | `List l    ->
+          Error (Invalid_json ("nested list is not allowed for property value", j))
+      | `Assoc _   ->
+          Error (Invalid_json ("object is not allowed for property value", j))
+      | `Null      ->
+          Error (Invalid_json ("null is not allowed for property value", j))
+      | `Tuple _   ->
+          Error (Invalid_json ("tuple is not allowed for property value", j))
+      | `Variant _ ->
+          Error (Invalid_json ("variant is not allowed for property value", j))
 
-    let rec v_from_json : Json.json -> v result = function
+    let rec v_from_json j : v result =
+      match j with
       | `Bool b    -> OK (`Bool b)
       | `Float f   -> OK (`Float f)
       | `Int i     -> OK (`Int i)
       | `Intlit i  -> OK (`Intlit i)
       | `String s  -> OK (`String s)
       | `List l    -> Json.lmap basic_v_from_json l >>= (fun l -> OK (`List l))
-      | `Assoc _   -> Error (Invalid_json "object is not allowed for property value")
-      | `Null      -> Error (Invalid_json "null is not allowed for property value")
-      | `Tuple _   -> Error (Invalid_json "tuple is not allowed for property value")
-      | `Variant _ -> Error (Invalid_json "variant is not allowed for property value")
+      | `Assoc _   ->
+          Error (Invalid_json ("object is not allowed for property value", j))
+      | `Null      ->
+          Error (Invalid_json ("null is not allowed for property value", j))
+      | `Tuple _   ->
+          Error (Invalid_json ("tuple is not allowed for property value", j))
+      | `Variant _ ->
+          Error (Invalid_json ("variant is not allowed for property value", j))
 
     let v_to_json (v : v) : Json.json = (v :> Json.json)
 
@@ -601,7 +646,6 @@ struct
                 encode k ^ "=" ^ encode (Json.to_string (Property.v_to_json v))
               )
       in
-      print_endline param;
       _get (sprintf "label/%s/nodes%s" label param)
         Json.(fun _ json -> some_of json >>= list >>= lmap Node.from_json)
 

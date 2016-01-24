@@ -13,9 +13,11 @@ sig
 
   type error =
     | Error_rsp of Nethttp.http_status * Yojson.Safe.json option
-    | Invalid_json of string
+    | Invalid_json of string * Yojson.Safe.json
     | Malformed_rsp of string
     | Unexpected of string
+
+  val error_to_string : error -> string
 
   type 'a result = ('a, error) Result.t
 
@@ -218,6 +220,14 @@ sig
   val _put :
     path -> ?data:Yojson.Safe.json
     -> (string option -> Yojson.Safe.json option -> 'a result) -> 'a call
+
+  (** Debug flag. It is setted to [false] by default. If [true], {!print_debug}
+      will print a lot of debug messages. *)
+  val debug : bool ref
+
+  (** Function to print debug messages. It is setted to [Pervasives.prerr_endline]
+      by default. *)
+  val print_debug : (string -> unit) ref
 end
 
 module Make : functor (Cfg : CONFIG) -> API
