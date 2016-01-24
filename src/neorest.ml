@@ -25,7 +25,9 @@ sig
 
   type 'a result = ('a, error) Result.t
 
-  val and_then : ('a -> 'b result) -> 'a call -> 'b call
+  val map_rsp : ('a -> 'b result) -> 'a call -> 'b call
+
+  val ignore_rsp : 'a call -> unit call
 
   val batch : (int * 'a call) list -> (int * 'a) list call
 
@@ -309,11 +311,13 @@ struct
     | Post of path * Json.json option * 'a callback
     | Put of path * Json.json option * 'a callback
 
-  let and_then m = function
+  let map_rsp m = function
     | Get (p, f)     -> Get (p, (fun l j -> f l j >>= m))
     | Delete (p, f)  -> Delete (p, (fun l j -> f l j >>= m))
     | Post (p, d, f) -> Post (p, d, (fun l j -> f l j >>= m))
     | Put (p, d, f)  -> Put (p, d, (fun l j -> f l j >>= m))
+
+  let ignore_rsp c = map_rsp (fun _ -> OK ()) c
 
   let _get path f = Get (path, f)
   let _delete path f = Delete (path, f)
@@ -860,7 +864,7 @@ struct
       _post (sprintf "transaction/%s" t.tid) ~data (rsp_transaction_from_json t)
 
     let reset_timeout t =
-      and_then (fun (_, t) -> OK t) (execute_in_transaction [] t)
+      map_rsp (fun (_, t) -> OK t) (execute_in_transaction [] t)
 
     let commit qs t =
       let data = queries_to_json qs in

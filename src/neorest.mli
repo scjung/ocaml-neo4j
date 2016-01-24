@@ -19,7 +19,9 @@ sig
 
   type 'a result = ('a, error) Result.t
 
-  val and_then : ('a -> 'b result) -> 'a call -> 'b call
+  val map_rsp : ('a -> 'b result) -> 'a call -> 'b call
+
+  val ignore_rsp : 'a call -> unit call
 
   val batch : (int * 'a call) list -> (int * 'a) list call
 
@@ -219,3 +221,10 @@ sig
 end
 
 module Make : functor (Cfg : CONFIG) -> API
+
+
+(*
+  Local variables:
+  compile-command: "make -C .."
+  End:
+ *)
