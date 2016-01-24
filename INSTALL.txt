@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: f3524f015dd0dcb943e854842c2de2bf) *)
+(* DO NOT EDIT (digest: 48be057a3e4124c3a541b8504480186c) *)
 
 This is the INSTALL file for the neolib distribution.
 
@@ -11,7 +11,7 @@ Dependencies
 
 In order to compile this package, you will need:
 
-* ocaml
+* ocaml for all, test demo1, test demo2, doc neolib_api
 * findlib
 * netclient (>= 4.0.0) for library neolib
 * yojson for library neolib

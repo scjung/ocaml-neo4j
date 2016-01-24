@@ -3,5 +3,6 @@ _build
 setup.data
 setup.log
 src/.ocamlinit
-
+neolib_api.docdir
+neolib_api.odocl
 
