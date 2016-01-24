@@ -1,6 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: cfae6b95ed3f66a10853ddb9cc846fc6)
-version = "0.1"
+# DO NOT EDIT (digest: 36298b5d5d3c0700e5fbc67faa64a2e8)
+version = "0.2.3"
 description = "API to access Neo4j database"
 requires = "netclient yojson"
 archive(byte) = "neolib.cma"
