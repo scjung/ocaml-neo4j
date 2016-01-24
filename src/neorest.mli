@@ -39,15 +39,19 @@ sig
   sig
     type k = string
 
-    type basic_v = [
+    (** Note that property values are not JSON values, but a subset of it. *)
+    type v = [
       | `Bool of bool
       | `Float of float
       | `Int of int
       | `Intlit of string
       | `String of string
+      | `List_bool of bool list
+      | `List_float of float list
+      | `List_int of int list
+      | `List_intlit of string list
+      | `List_string of string list
     ]
-
-    type v = [ basic_v | `List of basic_v list ]
 
     type kv = k * v
 
@@ -56,6 +60,10 @@ sig
     val v_from_json : Yojson.Safe.json -> v result
 
     val from_json : Yojson.Safe.json -> t result
+
+    val v_to_json : v -> Yojson.Safe.json
+
+    val to_json : t -> Yojson.Safe.json
 
     val keys : unit -> k list call
   end

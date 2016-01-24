@@ -43,15 +43,18 @@ sig
   sig
     type k = string
 
-    type basic_v = [
+    type v = [
       | `Bool of bool
       | `Float of float
       | `Int of int
       | `Intlit of string
       | `String of string
+      | `List_bool of bool list
+      | `List_float of float list
+      | `List_int of int list
+      | `List_intlit of string list
+      | `List_string of string list
     ]
-
-    type v = [ basic_v | `List of basic_v list ]
 
     type kv = k * v
 
@@ -60,6 +63,10 @@ sig
     val v_from_json : Yojson.Safe.json -> v result
 
     val from_json : Yojson.Safe.json -> t result
+
+    val v_to_json : v -> Yojson.Safe.json
+
+    val to_json : t -> Yojson.Safe.json
 
     val keys : unit -> k list call
   end
@@ -442,6 +449,11 @@ struct
     pipeline#run ();
     let v = req#response_body#value in
     let l = try Some (req#response_header#field "Location") with Not_found -> None in
+    if !debug then (
+      !print_debug ("RESPONSE STATUS: "
+                    ^ Nethttp.string_of_http_status req#response_status);
+      !print_debug ("RESPONSE BODY: " ^ v);
+    );
     match req#response_status with
     | `Ok | `Created | `No_content ->
         if String.length v = 0 then
@@ -467,61 +479,90 @@ struct
   struct
     type k = string
 
-    type basic_v = [
+    type v = [
       | `Bool of bool
       | `Float of float
       | `Int of int
       | `Intlit of string
       | `String of string
+      | `List_bool of bool list
+      | `List_float of float list
+      | `List_int of int list
+      | `List_intlit of string list
+      | `List_string of string list
     ]
-
-    type v = [ basic_v | `List of basic_v list ]
 
     type kv = k * v
 
     type t = kv list
 
-    let rec basic_v_from_json j : basic_v result =
+    let rec int_list revl : Json.json list -> int list result = function
+      | []          -> OK (List.rev revl)
+      | `Int i :: t -> int_list (i :: revl) t
+      | j :: _      -> Error (Invalid_json ("mixed-type list is not allowed", j))
+
+    let rec intlit_list revl = function
+      | []             -> OK (List.rev revl)
+      | `Intlit i :: t -> intlit_list (i :: revl) t
+      | j :: _         -> Error (Invalid_json ("mixed-type list is not allowed", j))
+
+    let rec bool_list revl = function
+      | []           -> OK (List.rev revl)
+      | `Bool b :: t -> bool_list (b :: revl) t
+      | j :: _       -> Error (Invalid_json ("mixed-type list is not allowed", j))
+
+    let rec float_list revl = function
+      | []            -> OK (List.rev revl)
+      | `Float f :: t -> float_list (f :: revl) t
+      | j :: _        -> Error (Invalid_json ("mixed-type list is not allowed", j))
+
+    let rec string_list revl = function
+      | []             -> OK (List.rev revl)
+      | `String s :: t -> string_list (s :: revl) t
+      | j :: _         -> Error (Invalid_json ("mixed-type list is not allowed", j))
+
+    let rec v_from_json (j : Json.json) : v result =
       match j with
       | `Bool b    -> OK (`Bool b)
       | `Float f   -> OK (`Float f)
       | `Int i     -> OK (`Int i)
       | `Intlit i  -> OK (`Intlit i)
       | `String s  -> OK (`String s)
-      | `List l    ->
-          Error (Invalid_json ("nested list is not allowed for property value", j))
+      | `List l    -> (
+          match l with
+          | []             -> OK (`List_string [])
+          | `Int _ :: t    -> int_list [] l >>= (fun l -> OK (`List_int l))
+          | `Intlit _ :: t -> intlit_list [] l >>= (fun l -> OK (`List_intlit l))
+          | `Bool _ :: t   -> bool_list [] l >>= (fun l -> OK (`List_bool l))
+          | `Float _ :: t  -> float_list [] l >>= (fun l -> OK (`List_float l))
+          | `String _ :: t -> string_list [] l >>= (fun l -> OK (`List_string l))
+          | j :: _         ->
+              Error (Invalid_json ("only basic type is allowed for list elements", j))
+        )
       | `Assoc _   ->
-          Error (Invalid_json ("object is not allowed for property value", j))
+          Error (Invalid_json ("object is not allowed", j))
       | `Null      ->
-          Error (Invalid_json ("null is not allowed for property value", j))
+          Error (Invalid_json ("null is not allowed", j))
       | `Tuple _   ->
-          Error (Invalid_json ("tuple is not allowed for property value", j))
+          Error (Invalid_json ("tuple is not allowed", j))
       | `Variant _ ->
-          Error (Invalid_json ("variant is not allowed for property value", j))
+          Error (Invalid_json ("variant is not allowed", j))
 
-    let rec v_from_json j : v result =
-      match j with
-      | `Bool b    -> OK (`Bool b)
-      | `Float f   -> OK (`Float f)
-      | `Int i     -> OK (`Int i)
-      | `Intlit i  -> OK (`Intlit i)
-      | `String s  -> OK (`String s)
-      | `List l    -> Json.lmap basic_v_from_json l >>= (fun l -> OK (`List l))
-      | `Assoc _   ->
-          Error (Invalid_json ("object is not allowed for property value", j))
-      | `Null      ->
-          Error (Invalid_json ("null is not allowed for property value", j))
-      | `Tuple _   ->
-          Error (Invalid_json ("tuple is not allowed for property value", j))
-      | `Variant _ ->
-          Error (Invalid_json ("variant is not allowed for property value", j))
+    let v_to_json (v : v) : Json.json =
+      match v with
+      | `Bool _ | `Float _ | `Int _ | `Intlit _ | `String _ as v ->
+          v
 
-    let v_to_json (v : v) : Json.json = (v :> Json.json)
+      | `List_int is    -> `List (List.map (fun i -> `Int i) is)
+      | `List_intlit is -> `List (List.map (fun i -> `Intlit i) is)
+      | `List_float fs  -> `List (List.map (fun f -> `Float f) fs)
+      | `List_bool bs   -> `List (List.map (fun b -> `Bool b) bs)
+      | `List_string ss -> `List (List.map (fun s -> `String s) ss)
 
     let from_json json = Json.(assoc json >>= vmap v_from_json)
 
     let to_json (t : t) : Json.json =
-      `Assoc (List.map (fun (k, (v : v)) -> (k, (v :> Json.json))) t)
+      `Assoc (List.map (fun (k, (v : v)) -> (k, (v_to_json v))) t)
 
     let keys () =
       _get "propertykeys"
