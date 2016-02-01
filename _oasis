@@ -13,7 +13,7 @@ Library neolib
     netclient (>= 4.0.0),
     yojson
   Path:         src
-  Modules:      Neorest,Helpers,Result
+  Modules:      Neorest,Helpers,Result,Neo4j_cypher
 
 Test demo1
   TestTools: demo1
