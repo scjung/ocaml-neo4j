@@ -1,6 +1,6 @@
 OASISFormat: 0.4
 Name:        neolib
-Version:     0.2.4
+Version:     0.2.4.1
 Synopsis:    API to access Neo4j database
 Authors:     Kakadu
 License:     LGPL-3.0 with OCaml linking exception
