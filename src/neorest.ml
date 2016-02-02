@@ -155,7 +155,7 @@ sig
 
   module Cypher :
   sig
-    type stmt = string
+    type stmt = [`String of string | `Ast of Neo4j_cypher.statement]
     type param = (string * Yojson.Safe.json) list
     type query = stmt * param * [`Stats | `REST | `Row | `Graph] list
 
@@ -784,7 +784,7 @@ struct
 
   module Cypher =
   struct
-    type stmt = string
+    type stmt = [`String of string | `Ast of Neo4j_cypher.statement]
     type param = (string * Json.json) list
     type query = stmt * param * [`Stats | `REST | `Row | `Graph] list
 
@@ -898,6 +898,13 @@ struct
       >>= (fun expires -> OK ((results, errors), { t with expires })))))
 
     let query_to_json (stmt, params, contents) =
+      let stmt =
+        match stmt with
+        | `String s -> s
+        | `Ast s    ->
+            Neo4j_cypher.pp_print_statement Format.str_formatter s;
+            Format.flush_str_formatter ()
+      in
       let (includeStats, resultDataContents) =
         List.fold_left (fun (i, c) -> function
             | `Stats -> (true, c)
@@ -959,10 +966,10 @@ struct
       _delete (sprintf "transaction/%s" t.tid) rsp_from_json
 
     let delete_all_relationships =
-      ("START r=rel(*)  DELETE r;", [], [])
+      (`String "START r=rel(*)  DELETE r;", [], [])
 
     let delete_all_nodes =
-      ("START n=node(*) DELETE n;", [], [])
+      (`String "START n=node(*) DELETE n;", [], [])
   end
 end
 

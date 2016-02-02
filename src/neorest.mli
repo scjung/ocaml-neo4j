@@ -151,7 +151,7 @@ sig
 
   module Cypher :
   sig
-    type stmt = string
+    type stmt = [`String of string | `Ast of Neo4j_cypher.statement]
     type param = (string * Yojson.Safe.json) list
 
     (** Statement, its parameters, and includeStats. *)
