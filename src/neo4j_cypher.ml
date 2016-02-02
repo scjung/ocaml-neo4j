@@ -189,8 +189,8 @@ type remove_item =
 type return_item = expression * variable option
 
 type return_items =
-  | Return_include_existing of return_item ne_list
-  | Return of return_item list
+  | Include_existing of return_item list
+  | Items of return_item ne_list
 
 type sort_item = expression * [`ASC | `DESC]
 
@@ -739,12 +739,12 @@ let pp_print_return_item fmt (e, vopt) =
   | Some v -> F.fprintf fmt " AS %a" pp_print_variable v
 
 let pp_print_return_items fmt = function
-  | Return_include_existing (ri, ris) ->
+  | Include_existing ris ->
       F.fprintf fmt "*, %a"
-        (pp_print_list pp_print_return_item pp_print_comma) (ri :: ris)
+        (pp_print_list pp_print_return_item pp_print_comma) ris
 
-  | Return ris ->
-      pp_print_list pp_print_return_item pp_print_comma fmt ris
+  | Items (ri, ris) ->
+      pp_print_list pp_print_return_item pp_print_comma fmt (ri :: ris)
 
 let pp_print_sort_item fmt (e, o) =
   F.fprintf fmt "@[%a %s@]"

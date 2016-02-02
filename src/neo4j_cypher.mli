@@ -265,10 +265,10 @@ type remove_item =
 type return_item = expression * variable option
 
 type return_items =
-  | Return_include_existing of return_item ne_list
+  | Include_existing of return_item list
       (** [* , ...] *)
 
-  | Return of return_item list
+  | Items of return_item ne_list
 
 type sort_item = expression * [`ASC | `DESC]
 
@@ -330,7 +330,8 @@ type clause =
       (** [WITH]. The first boolean value denotes whether [DISTINCT] is given or not. *)
 
   | Return of bool * return_body
-      (** [RETURN] *)
+      (** [RETURN]. The first boolean value denotes whether [DISTINCT] is
+          given or not. *)
 
 type single_query = clause ne_list
 
