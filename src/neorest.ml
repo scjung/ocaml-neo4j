@@ -153,6 +153,15 @@ sig
     val types : unit -> string list call
   end
 
+  module Index :
+  sig
+    val create : Label.t -> Property.k list -> (Label.t * Property.k list) call
+
+    val list : Label.t -> (Label.t * Property.k list) list call
+
+    val drop : Label.t -> Property.k -> unit call
+  end
+
   module Cypher :
   sig
     type stmt = [`String of string | `Ast of Neo4j_cypher.statement]
@@ -780,6 +789,29 @@ struct
     let types () =
       _get "relationship/types"
         Json.(fun _ json -> some_of json >>= list >>= lmap string)
+  end
+
+  module Index =
+  struct
+    let json_to_index_info json =
+      let open Json in
+      assoc json
+      >>= (fun obj -> field "label" obj >>= string
+      >>= (fun label -> field "property_keys" obj >>= list >>= lmap string
+      >>= (fun ks -> OK (label, ks))))
+
+    let create l ks =
+      _post ("schema/index/" ^ l)
+        ~data:(`Assoc ["property_keys", `List (List.map (fun k -> `String k) ks)])
+        Json.(fun _ json -> some_of json >>= json_to_index_info)
+
+    let list l =
+      _get ("schema/index" ^ l)
+        Json.(fun _ json -> some_of json >>= list >>= lmap json_to_index_info)
+
+    let drop l k =
+      _delete (sprintf "schema/index/%s/%s" l k)
+        Json.(fun _ _ -> OK ())
   end
 
   module Cypher =

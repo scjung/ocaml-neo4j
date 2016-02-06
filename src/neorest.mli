@@ -149,6 +149,15 @@ sig
     val types : unit -> string list call
   end
 
+  module Index :
+  sig
+    val create : Label.t -> Property.k list -> (Label.t * Property.k list) call
+
+    val list : Label.t -> (Label.t * Property.k list) list call
+
+    val drop : Label.t -> Property.k -> unit call
+  end
+
   module Cypher :
   sig
     type stmt = [`String of string | `Ast of Neo4j_cypher.statement]
