@@ -83,21 +83,21 @@ sig
 
     val create : ?property:Property.t -> unit -> t call
 
-    val get : int -> t call
+    val get : id -> t call
 
-    val delete : int -> t call
+    val delete : id -> t call
 
-    val set_property : int -> Property.k -> Property.v -> unit call
+    val set_property : id -> Property.k -> Property.v -> unit call
 
-    val update_properties : int -> Property.t -> unit call
+    val update_properties : id -> Property.t -> unit call
 
-    val get_properties : int -> Property.t call
+    val get_properties : id -> Property.t call
 
-    val get_property : int -> Property.k -> Property.v call
+    val get_property : id -> Property.k -> Property.v call
 
-    val delete_properties : int -> unit call
+    val delete_properties : id -> unit call
 
-    val delete_property : int -> Property.k -> unit call
+    val delete_property : id -> Property.k -> unit call
 
     val degree : ?types:string list -> id -> [`In_out | `In | `Out] -> int call
   end
@@ -106,13 +106,13 @@ sig
   sig
     type t = string
 
-    val add : int -> t list -> unit call
+    val add : Node.id -> t list -> unit call
 
-    val replace : int -> t list -> unit call
+    val replace : Node.id -> t list -> unit call
 
-    val remove : int -> t -> unit call
+    val remove : Node.id -> t -> unit call
 
-    val get : int -> t list call
+    val get : Node.id -> t list call
 
     val get_nodes : ?property:Property.kv -> t -> Node.t list call
 
