@@ -162,6 +162,29 @@ sig
     val drop : Label.t -> Property.k -> unit call
   end
 
+  module Constraint :
+  sig
+    type t = [`Unique | `Exist]
+
+    val create : Label.t -> t -> Property.k list -> (Label.t * t * Property.k list) call
+
+    val get : Label.t -> t -> Property.k -> (Label.t * t * Property.k list) list call
+
+    val get_for_label_type : Label.t -> t -> (Label.t * t * Property.k list) list call
+
+    val get_for_label : Label.t -> (Label.t * t * Property.k list) list call
+
+    val drop : Label.t -> t -> Property.k -> unit call
+
+    val get_rel_exist : Relationship.typ -> Property.k
+      -> (Label.t * t * Property.k list) list call
+
+    val get_rel_exist_for_rel_type : Relationship.typ
+      -> (Label.t * t * Property.k list) list call
+
+    val get_all : unit -> (Label.t * t * Property.k list) list call
+  end
+
   module Cypher :
   sig
     type stmt = [`String of string | `Ast of Neo4j_cypher.statement]
@@ -812,6 +835,66 @@ struct
     let drop l k =
       _delete (sprintf "schema/index/%s/%s" l k)
         Json.(fun _ _ -> OK ())
+  end
+
+  module Constraint =
+  struct
+    type t = [`Unique | `Exist]
+
+    let t_to_path = function
+      | `Unique -> "uniqueness"
+      | `Exist  -> "existence"
+
+    let json_node_constraint_type_to_t json =
+      let open Json in
+      string json >>= (function
+          | "UNIQUENESS" -> OK `Unique
+          | "NODE_PROPERTY_EXISTENCE" -> OK `Exist
+          | "RELATIONSHIP_PROPERTY_EXISTENCE" -> OK `Exist
+          | s ->
+              Error (Invalid_json ("neither UNIQUENESS nor NODE_PROPERTY_EXISTENCE", json))
+        )
+
+    let json_to_constraint_info json =
+      let open Json in
+      assoc json
+      >>= (fun obj -> field "label" obj >>= string
+      >>= (fun label -> field "type" obj >>= json_node_constraint_type_to_t
+      >>= (fun t -> field "property_keys" obj >>= list >>= lmap string
+      >>= (fun ks -> OK (label, t, ks)))))
+
+    let create l t ks =
+      _post (sprintf "schema/constraint/%s/%s" l (t_to_path t))
+        ~data:(`Assoc ["property_keys", `List (List.map (fun k -> `String k) ks)])
+        Json.(fun _ json -> some_of json >>= json_to_constraint_info)
+
+    let get l t k =
+      _get (sprintf "schema/constraint/%s/%s/%s" l (t_to_path t) k)
+        Json.(fun _ json -> some_of json >>= list >>= lmap json_to_constraint_info)
+
+    let get_for_label_type l t =
+      _get (sprintf "schema/constraint/%s/%s" l (t_to_path t))
+        Json.(fun _ json -> some_of json >>= list >>= lmap json_to_constraint_info)
+
+    let get_for_label l =
+      _get (sprintf "schema/constraint/%s" l)
+        Json.(fun _ json -> some_of json >>= list >>= lmap json_to_constraint_info)
+
+    let get_all () =
+      _get "schema/constraint"
+        Json.(fun _ json -> some_of json >>= list >>= lmap json_to_constraint_info)
+
+    let drop l t k =
+      _delete (sprintf "schema/constraint/%s/%s/%s" l (t_to_path t) k)
+        Json.(fun _ _ -> OK ())
+
+    let get_rel_exist rt k =
+      _get (sprintf "schema/relationship/constraint/%s/existence/%s" rt k)
+        Json.(fun _ json -> some_of json >>= list >>= lmap json_to_constraint_info)
+
+    let get_rel_exist_for_rel_type rt =
+      _get (sprintf "schema/relationship/constraint/%s/existence" rt)
+        Json.(fun _ json -> some_of json >>= list >>= lmap json_to_constraint_info)
   end
 
   module Cypher =

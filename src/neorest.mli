@@ -158,6 +158,29 @@ sig
     val drop : Label.t -> Property.k -> unit call
   end
 
+  module Constraint :
+  sig
+    type t = [`Unique | `Exist]
+
+    val create : Label.t -> t -> Property.k list -> (Label.t * t * Property.k list) call
+
+    val get : Label.t -> t -> Property.k -> (Label.t * t * Property.k list) list call
+
+    val get_for_label_type : Label.t -> t -> (Label.t * t * Property.k list) list call
+
+    val get_for_label : Label.t -> (Label.t * t * Property.k list) list call
+
+    val drop : Label.t -> t -> Property.k -> unit call
+
+    val get_rel_exist : Relationship.typ -> Property.k
+      -> (Label.t * t * Property.k list) list call
+
+    val get_rel_exist_for_rel_type : Relationship.typ
+      -> (Label.t * t * Property.k list) list call
+
+    val get_all : unit -> (Label.t * t * Property.k list) list call
+  end
+
   module Cypher :
   sig
     type stmt = [`String of string | `Ast of Neo4j_cypher.statement]
