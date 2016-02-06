@@ -385,9 +385,9 @@ struct
       Json.(some_of json >>= list >>= lmap (fun rsp ->
           assoc rsp
           >>= (fun rsp -> field "id" rsp >>= int
-          >>= (fun id -> field "body" rsp
+          >>= (fun id -> opt_field "body" rsp
           >>= (fun body ->
-                (List.assoc id callbacks) l (Some body) >>= (fun x -> OK (id, x))
+                (List.assoc id callbacks) l body >>= (fun x -> OK (id, x))
         )))))
     in
     Post ("batch", Some (`List (List.rev rev_jsons)), callback)
