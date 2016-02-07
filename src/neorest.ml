@@ -185,6 +185,31 @@ sig
     val get_all : unit -> (Label.t * t * Property.k list) list call
   end
 
+  module Algorithm :
+  sig
+    type path = {
+      start_node : Node.id;
+      end_node : Node.id;
+      length : int;
+      weight : float option;
+      path : Node.id * ([`In_out | `In | `Out] * Relationship.id * Node.id) list
+    }
+
+    type algorithm =
+      | Shortest_path of int option
+      | All_simple_paths
+      | All_paths
+      | Dijkstra of Property.k option * int option
+
+    val all_paths : from:Node.id -> Node.id
+      -> Relationship.typ -> [`In_out | `In | `Out]
+      -> algorithm -> path list call
+
+    val path : from:Node.id -> Node.id
+      -> Relationship.typ -> [`In_out | `In | `Out]
+      -> algorithm -> path call
+  end
+
   module Cypher :
   sig
     type stmt = [`String of string | `Ast of Neo4j_cypher.statement]
@@ -319,6 +344,11 @@ struct
       | `Int i -> OK i
       | j -> Error (Invalid_json ("expects int", j))
 
+    let float = function
+      | `Int i -> OK (float_of_int i)
+      | `Float f -> OK f
+      | j -> Error (Invalid_json ("expects float", j))
+
     let bool = function
       | `Bool b -> OK b
       | j -> Error (Invalid_json ("expects bool", j))
@@ -330,6 +360,10 @@ struct
     let list : json -> json list result = function
       | `List l -> OK l
       | j -> Error (Invalid_json ("expects list", j))
+
+    let ne_list : json -> (json * json list) result = function
+      | `List (h :: t) -> OK (h, t)
+      | j -> Error (Invalid_json ("expects non-empty list", j))
 
     let assoc = function
       | `Assoc assoc -> OK assoc
@@ -360,6 +394,9 @@ struct
         | h :: t -> f h >>= (fun x -> aux (x :: revl) f t)
       in
       fun f l -> aux [] f l
+
+    let nelmap : ('a -> 'b result) -> 'a * 'a list -> ('b * 'b list) result =
+      fun f (h, t) -> f h >>= (fun h -> lmap f t >>= (fun t -> OK (h, t)))
 
     let vmap f l = lmap (fun (k, v) -> f v >>= (fun v -> OK (k, v))) l
 
@@ -895,6 +932,138 @@ struct
     let get_rel_exist_for_rel_type rt =
       _get (sprintf "schema/relationship/constraint/%s/existence" rt)
         Json.(fun _ json -> some_of json >>= list >>= lmap json_to_constraint_info)
+  end
+
+  module Algorithm =
+  struct
+    type path = {
+      start_node : Node.id;
+      end_node : Node.id;
+      length : int;
+      weight : float option;
+      path : Node.id * ([`In_out | `In | `Out] * Relationship.id * Node.id) list
+    }
+
+    type algorithm =
+      | Shortest_path of int option
+      | All_simple_paths
+      | All_paths
+      | Dijkstra of Property.k option * int option
+
+    let rsplit ~by s =
+      try
+        let i = String.rindex s by in
+        let l = String.sub s 0 (i - 1) in
+        let r =
+          let len = String.length s in
+          if i + 1 = len then "" else String.sub s (i + 1) (len - i - 1)
+        in
+        OK (l, r)
+      with
+      | Not_found -> Error (Unexpected "rsplit")
+
+    let node_id = function
+      | `String uri ->
+          rsplit ~by:'/' uri >>= (fun (_, n) ->
+              try OK (int_of_string n)
+              with Failure _ -> Error (Unexpected ("node id: " ^ n))
+            )
+
+      | j -> Error (Invalid_json ("node uri", j))
+
+    let rel_id = function
+      | `String uri ->
+          rsplit ~by:'/' uri >>= (fun (_, n) ->
+              try OK (int_of_string n)
+              with Failure _ -> Error (Unexpected ("relationship id: " ^ n))
+            )
+
+      | j -> Error (Invalid_json ("relationship uri", j))
+
+    let combine3 m l1 l2 l3 =
+      try
+        OK (List.combine (List.combine l1 l2) l3)
+      with
+      | Invalid_argument _ -> Error (Unexpected m)
+
+    let dir = function
+      | `String "<->" -> OK `In_out
+      | `String "->"  -> OK `Out
+      | `String "<-"  -> OK `In
+      | j             -> Error (Invalid_json ("direction", j))
+
+    let json_to_path json =
+      let open Json in
+      assoc json
+      >>= (fun obj -> field "start" obj >>= node_id
+      >>= (fun start_node -> field "end" obj >>= node_id
+      >>= (fun end_node -> field "length" obj >>= int
+      >>= (fun length -> field "nodes" obj >>= ne_list >>= nelmap node_id
+      >>= (fun (n, nodes) -> field "relationships" obj >>= list >>= lmap rel_id
+      >>= (fun rels -> field "directions" obj >>= list >>= lmap dir
+      >>= (fun dirs -> opt_field "weight" obj >>= omap float
+      >>= (fun weight ->
+            combine3 "unmatched nodes, relationships, directions"
+              nodes rels dirs
+            >>= (fun path ->
+                let path = (start_node, List.map (fun ((n, r), d) -> (d, r, n)) path) in
+                OK { start_node; end_node; length; weight; path }
+              )
+          ))))))))
+
+    let aux from to_ rel_type rel_dir algorithm api rsp =
+      let data =
+        [
+          ("to", `String (get_uri ("node/" ^ string_of_int to_)));
+          ("relationships", `Assoc [
+              ("type", `String rel_type);
+              ("direction", `String (
+                  match rel_dir with
+                  | `In_out -> "all"
+                  | `In -> "in"
+                  | `Out -> "out"
+                ));
+            ]);
+        ]
+      in
+      let data =
+        match algorithm with
+        | Shortest_path None ->
+            ("algorithm", `String "shortestPath") :: data
+
+        | Shortest_path (Some md) ->
+            ("algorithm", `String "shortestPath")
+            :: ("max_depth", `Int md)
+            :: data
+
+        | All_simple_paths ->
+            ("algorithm", `String "allSimplePaths") :: data
+
+        | All_paths ->
+            ("algorithm", `String "allPaths") :: data
+
+        | Dijkstra (cp, dc) ->
+            ["algorithm", `String "dijkstra"] @ (
+              match cp with
+              | None   -> []
+              | Some k -> ["cost_property", `String k]
+            ) @ (
+              match dc with
+              | None   -> []
+              | Some c -> ["default_cost", `Int c]
+            ) @ data
+      in
+      _post (sprintf "node/%d/%s" from api)
+        ~data:(`Assoc data)
+        rsp
+
+    let all_paths ~from to_ rel_type rel_dir algorithm =
+      aux from to_ rel_type rel_dir algorithm "paths"
+        Json.(fun _ json -> some_of json >>= list >>= lmap json_to_path)
+
+    let path ~from to_ rel_type rel_dir algorithm =
+      aux from to_ rel_type rel_dir algorithm "path"
+        Json.(fun _ json -> some_of json >>= json_to_path)
   end
 
   module Cypher =

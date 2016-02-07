@@ -181,6 +181,36 @@ sig
     val get_all : unit -> (Label.t * t * Property.k list) list call
   end
 
+  module Algorithm :
+  sig
+    type path = {
+      start_node : Node.id;
+      end_node : Node.id;
+      length : int;
+      weight : float option;
+      path : Node.id * ([`In_out | `In | `Out] * Relationship.id * Node.id) list
+    }
+
+    type algorithm =
+      | Shortest_path of int option
+          (** The int value is maximum depth to apply. *)
+
+      | All_simple_paths
+
+      | All_paths
+
+      | Dijkstra of Property.k option * int option
+          (** Cost property and default cost. *)
+
+    val all_paths : from:Node.id -> Node.id
+      -> Relationship.typ -> [`In_out | `In | `Out]
+      -> algorithm -> path list call
+
+    val path : from:Node.id -> Node.id
+      -> Relationship.typ -> [`In_out | `In | `Out]
+      -> algorithm -> path call
+  end
+
   module Cypher :
   sig
     type stmt = [`String of string | `Ast of Neo4j_cypher.statement]
