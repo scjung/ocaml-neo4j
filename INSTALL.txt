@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 48be057a3e4124c3a541b8504480186c) *)
+(* DO NOT EDIT (digest: 3126a5523037be6a8f87346b8a40f190) *)
 
 This is the INSTALL file for the neolib distribution.
 
@@ -15,6 +15,7 @@ In order to compile this package, you will need:
 * findlib
 * netclient (>= 4.0.0) for library neolib
 * yojson for library neolib
+* result for library neolib
 * calendar for executable demo1, executable demo2
 
 Installing

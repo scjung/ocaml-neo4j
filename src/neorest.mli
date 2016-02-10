@@ -19,7 +19,7 @@ sig
 
   val error_to_string : error -> string
 
-  type 'a result = ('a, error) Result.t
+  type 'a result = ('a, error) Neo4j_result.result
 
   val map_rsp : ('a -> 'b result) -> 'a call -> 'b call
 
@@ -27,7 +27,7 @@ sig
 
   val batch : (int * 'a call) list -> (int * 'a) list call
 
-  val execute : 'a call -> ('a, error) Result.t
+  val execute : 'a call -> 'a result
 
   val root : (string * Yojson.Safe.json) list call
 

@@ -11,9 +11,10 @@ BuildTools:  ocamlbuild
 Library neolib
   BuildDepends:
     netclient (>= 4.0.0),
-    yojson
+    yojson,
+    result
   Path:         src
-  Modules:      Neorest,Helpers,Result,Neo4j_cypher
+  Modules:      Neorest,Helpers,Neo4j_result,Neo4j_cypher
 
 Test demo1
   TestTools: demo1

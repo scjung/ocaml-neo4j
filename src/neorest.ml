@@ -1,4 +1,4 @@
-open Result
+open Neo4j_result
 
 module String      = Helpers.String
 module Http_client = Nethttp_client
@@ -25,7 +25,7 @@ sig
 
   val error_to_string : error -> string
 
-  type 'a result = ('a, error) Result.t
+  type 'a result = ('a, error) Neo4j_result.result
 
   val map_rsp : ('a -> 'b result) -> 'a call -> 'b call
 
@@ -33,7 +33,7 @@ sig
 
   val batch : (int * 'a call) list -> (int * 'a) list call
 
-  val execute : 'a call -> ('a, error) Result.t
+  val execute : 'a call -> 'a result
 
   val root : (string * Yojson.Safe.json) list call
 
@@ -321,7 +321,7 @@ struct
     | Unexpected s ->
         "Unexpected: " ^ s
 
-  type 'a result = ('a, error) Result.t
+  type 'a result = ('a, error) Neo4j_result.result
 
   module Json = struct
     include Yojson.Safe
@@ -332,57 +332,57 @@ struct
 
     let from_string json =
       try
-        OK (from_string json)
+        Ok (from_string json)
       with
       | Yojson.Json_error m -> Error (Malformed_rsp m)
 
     let some_of = function
-      | Some x -> OK x
+      | Some x -> Ok x
       | None -> Error (Malformed_rsp "no json returned")
 
     let int = function
-      | `Int i -> OK i
+      | `Int i -> Ok i
       | j -> Error (Invalid_json ("expects int", j))
 
     let float = function
-      | `Int i -> OK (float_of_int i)
-      | `Float f -> OK f
+      | `Int i -> Ok (float_of_int i)
+      | `Float f -> Ok f
       | j -> Error (Invalid_json ("expects float", j))
 
     let bool = function
-      | `Bool b -> OK b
+      | `Bool b -> Ok b
       | j -> Error (Invalid_json ("expects bool", j))
 
     let string : json -> string result = function
-      | `String s -> OK s
+      | `String s -> Ok s
       | j -> Error (Invalid_json ("expects string", j))
 
     let list : json -> json list result = function
-      | `List l -> OK l
+      | `List l -> Ok l
       | j -> Error (Invalid_json ("expects list", j))
 
     let ne_list : json -> (json * json list) result = function
-      | `List (h :: t) -> OK (h, t)
+      | `List (h :: t) -> Ok (h, t)
       | j -> Error (Invalid_json ("expects non-empty list", j))
 
     let assoc = function
-      | `Assoc assoc -> OK assoc
+      | `Assoc assoc -> Ok assoc
       | j -> Error (Invalid_json ("expects object", j))
 
     let field ?def f obj : json result =
       try
-        OK (List.assoc f obj)
+        Ok (List.assoc f obj)
       with
       | Not_found ->
           match def with
           | None   -> Error (Invalid_json ("field not found: " ^ f, `Assoc obj))
-          | Some d -> OK d
+          | Some d -> Ok d
 
     let opt_field f obj : json option result =
       try
-        OK (Some (List.assoc f obj))
+        Ok (Some (List.assoc f obj))
       with
-      | Not_found -> OK None
+      | Not_found -> Ok None
 
     let nil = `List []
 
@@ -390,22 +390,22 @@ struct
 
     let lmap : ('a -> 'b result) -> 'a list -> 'b list result =
       let rec aux revl f = function
-        | []     -> OK (List.rev revl)
+        | []     -> Ok (List.rev revl)
         | h :: t -> f h >>= (fun x -> aux (x :: revl) f t)
       in
       fun f l -> aux [] f l
 
     let nelmap : ('a -> 'b result) -> 'a * 'a list -> ('b * 'b list) result =
-      fun f (h, t) -> f h >>= (fun h -> lmap f t >>= (fun t -> OK (h, t)))
+      fun f (h, t) -> f h >>= (fun h -> lmap f t >>= (fun t -> Ok (h, t)))
 
-    let vmap f l = lmap (fun (k, v) -> f v >>= (fun v -> OK (k, v))) l
+    let vmap f l = lmap (fun (k, v) -> f v >>= (fun v -> Ok (k, v))) l
 
     let omap f = function
-      | None   -> OK None
-      | Some x -> f x >>= (fun y -> OK (Some y))
+      | None   -> Ok None
+      | Some x -> f x >>= (fun y -> Ok (Some y))
   end
 
-  type 'a callback = string option -> Json.json option -> ('a, error) Result.t
+  type 'a callback = string option -> Json.json option -> 'a result
 
   type 'a call =
     | Get of path * 'a callback
@@ -419,7 +419,7 @@ struct
     | Post (p, d, f) -> Post (p, d, (fun l j -> f l j >>= m))
     | Put (p, d, f)  -> Put (p, d, (fun l j -> f l j >>= m))
 
-  let ignore_rsp c = map_rsp (fun _ -> OK ()) c
+  let ignore_rsp c = map_rsp (fun _ -> Ok ()) c
 
   let _get path f = Get (path, f)
   let _delete path f = Delete (path, f)
@@ -456,7 +456,7 @@ struct
           >>= (fun rsp -> field "id" rsp >>= int
           >>= (fun id -> opt_field "body" rsp
           >>= (fun body ->
-                (List.assoc id callbacks) l body >>= (fun x -> OK (id, x))
+                (List.assoc id callbacks) l body >>= (fun x -> Ok (id, x))
         )))))
     in
     Post ("batch", Some (`List (List.rev rev_jsons)), callback)
@@ -566,45 +566,45 @@ struct
     type t = kv list
 
     let rec int_list revl : Json.json list -> int list result = function
-      | []          -> OK (List.rev revl)
+      | []          -> Ok (List.rev revl)
       | `Int i :: t -> int_list (i :: revl) t
       | j :: _      -> Error (Invalid_json ("mixed-type list is not allowed", j))
 
     let rec intlit_list revl = function
-      | []             -> OK (List.rev revl)
+      | []             -> Ok (List.rev revl)
       | `Intlit i :: t -> intlit_list (i :: revl) t
       | j :: _         -> Error (Invalid_json ("mixed-type list is not allowed", j))
 
     let rec bool_list revl = function
-      | []           -> OK (List.rev revl)
+      | []           -> Ok (List.rev revl)
       | `Bool b :: t -> bool_list (b :: revl) t
       | j :: _       -> Error (Invalid_json ("mixed-type list is not allowed", j))
 
     let rec float_list revl = function
-      | []            -> OK (List.rev revl)
+      | []            -> Ok (List.rev revl)
       | `Float f :: t -> float_list (f :: revl) t
       | j :: _        -> Error (Invalid_json ("mixed-type list is not allowed", j))
 
     let rec string_list revl = function
-      | []             -> OK (List.rev revl)
+      | []             -> Ok (List.rev revl)
       | `String s :: t -> string_list (s :: revl) t
       | j :: _         -> Error (Invalid_json ("mixed-type list is not allowed", j))
 
     let rec v_from_json (j : Json.json) : v result =
       match j with
-      | `Bool b    -> OK (`Bool b)
-      | `Float f   -> OK (`Float f)
-      | `Int i     -> OK (`Int i)
-      | `Intlit i  -> OK (`Intlit i)
-      | `String s  -> OK (`String s)
+      | `Bool b    -> Ok (`Bool b)
+      | `Float f   -> Ok (`Float f)
+      | `Int i     -> Ok (`Int i)
+      | `Intlit i  -> Ok (`Intlit i)
+      | `String s  -> Ok (`String s)
       | `List l    -> (
           match l with
-          | []             -> OK (`List_string [])
-          | `Int _ :: t    -> int_list [] l >>= (fun l -> OK (`List_int l))
-          | `Intlit _ :: t -> intlit_list [] l >>= (fun l -> OK (`List_intlit l))
-          | `Bool _ :: t   -> bool_list [] l >>= (fun l -> OK (`List_bool l))
-          | `Float _ :: t  -> float_list [] l >>= (fun l -> OK (`List_float l))
-          | `String _ :: t -> string_list [] l >>= (fun l -> OK (`List_string l))
+          | []             -> Ok (`List_string [])
+          | `Int _ :: t    -> int_list [] l >>= (fun l -> Ok (`List_int l))
+          | `Intlit _ :: t -> intlit_list [] l >>= (fun l -> Ok (`List_intlit l))
+          | `Bool _ :: t   -> bool_list [] l >>= (fun l -> Ok (`List_bool l))
+          | `Float _ :: t  -> float_list [] l >>= (fun l -> Ok (`List_float l))
+          | `String _ :: t -> string_list [] l >>= (fun l -> Ok (`List_string l))
           | j :: _         ->
               Error (Invalid_json ("only basic type is allowed for list elements", j))
         )
@@ -656,7 +656,7 @@ struct
       >>= (fun id -> field ~def:nil "labels" metadata >>= list >>= lmap string
       >>= (fun labels -> field ~def:empty "data" top >>= Property.from_json
       >>= (fun property ->
-            OK { id; labels; property }
+            Ok { id; labels; property }
       )))))
 
     let from_rsp _ json =
@@ -679,12 +679,12 @@ struct
     let set_property id k v =
       _put (sprintf "node/%d/properties/%s" id k)
         ~data:(Property.v_to_json v)
-        (fun _ _ -> OK ())
+        (fun _ _ -> Ok ())
 
     let update_properties id t =
       _put (sprintf "node/%d/properties" id)
         ~data:(Property.to_json t)
-        (fun _ _ -> OK ())
+        (fun _ _ -> Ok ())
 
     let get_properties id =
       _get (sprintf "node/%d/properties" id)
@@ -696,11 +696,11 @@ struct
 
     let delete_properties id =
       _delete (sprintf "node/%d/properties" id)
-        (fun _ _ -> OK ())
+        (fun _ _ -> Ok ())
 
     let delete_property id k =
       _delete (sprintf "node/%d/properties/%s" id k)
-        (fun _ _ -> OK ())
+        (fun _ _ -> Ok ())
 
     let degree ?(types = []) id t =
       let path =
@@ -734,15 +734,15 @@ struct
 
     let add id labels =
       _post (sprintf "node/%d/labels" id) ~data:(labels_to_json labels)
-        (fun _ _ -> OK ())
+        (fun _ _ -> Ok ())
 
     let replace id labels =
       _put (sprintf "node/%d/labels" id) ~data:(labels_to_json labels)
-        (fun _ _ -> OK ())
+        (fun _ _ -> Ok ())
 
     let remove id label =
       _delete (sprintf "node/%d/labels/%s" id label)
-        (fun _ _ -> OK ())
+        (fun _ _ -> Ok ())
 
     let get id =
       _get (sprintf "node/%d/labels" id) labels_from_rsp
@@ -780,7 +780,7 @@ struct
       >>= (fun metadata -> field "id" metadata >>= int
       >>= (fun id -> field "type" metadata >>= string
       >>= (fun typ ->
-            OK { id; typ }
+            Ok { id; typ }
       ))))
 
     let from_rsp _ json =
@@ -803,7 +803,7 @@ struct
       _post (sprintf "node/%d/relationships" from) ~data from_rsp
 
     let delete id =
-      _delete (sprintf "relationship/%d" id) (fun _ _ -> OK ())
+      _delete (sprintf "relationship/%d" id) (fun _ _ -> Ok ())
 
     let properties id =
       _get (sprintf "relationship/%d/properties" id)
@@ -812,15 +812,15 @@ struct
     let set_properties id properties =
       _put (sprintf "relationship/%d/properties" id)
         ~data:(Property.to_json properties)
-        (fun _ _ -> OK ())
+        (fun _ _ -> Ok ())
 
     let delete_properties id =
       _delete (sprintf "relationship/%d/properties" id)
-        (fun _ _ -> OK ())
+        (fun _ _ -> Ok ())
 
     let delete_property id k =
       _delete (sprintf "relationship/%d/properties/%s" id k)
-        (fun _ _ -> OK ())
+        (fun _ _ -> Ok ())
 
     let property id p =
       _get (sprintf "relationship/%d/properties/%s" id p)
@@ -829,7 +829,7 @@ struct
     let set_property id k v =
       _put (sprintf "relationship/%d/properties/%s" id k)
         ~data:(Property.v_to_json v)
-        Json.(fun _ _ -> OK ())
+        Json.(fun _ _ -> Ok ())
 
     let of_node ?(types = []) id t =
       let t =
@@ -858,7 +858,7 @@ struct
       assoc json
       >>= (fun obj -> field "label" obj >>= string
       >>= (fun label -> field "property_keys" obj >>= list >>= lmap string
-      >>= (fun ks -> OK (label, ks))))
+      >>= (fun ks -> Ok (label, ks))))
 
     let create l ks =
       _post ("schema/index/" ^ l)
@@ -871,7 +871,7 @@ struct
 
     let drop l k =
       _delete (sprintf "schema/index/%s/%s" l k)
-        Json.(fun _ _ -> OK ())
+        Json.(fun _ _ -> Ok ())
   end
 
   module Constraint =
@@ -885,9 +885,9 @@ struct
     let json_node_constraint_type_to_t json =
       let open Json in
       string json >>= (function
-          | "UNIQUENESS" -> OK `Unique
-          | "NODE_PROPERTY_EXISTENCE" -> OK `Exist
-          | "RELATIONSHIP_PROPERTY_EXISTENCE" -> OK `Exist
+          | "UNIQUENESS" -> Ok `Unique
+          | "NODE_PROPERTY_EXISTENCE" -> Ok `Exist
+          | "RELATIONSHIP_PROPERTY_EXISTENCE" -> Ok `Exist
           | s ->
               Error (Invalid_json ("neither UNIQUENESS nor NODE_PROPERTY_EXISTENCE", json))
         )
@@ -898,7 +898,7 @@ struct
       >>= (fun obj -> field "label" obj >>= string
       >>= (fun label -> field "type" obj >>= json_node_constraint_type_to_t
       >>= (fun t -> field "property_keys" obj >>= list >>= lmap string
-      >>= (fun ks -> OK (label, t, ks)))))
+      >>= (fun ks -> Ok (label, t, ks)))))
 
     let create l t ks =
       _post (sprintf "schema/constraint/%s/%s" l (t_to_path t))
@@ -923,7 +923,7 @@ struct
 
     let drop l t k =
       _delete (sprintf "schema/constraint/%s/%s/%s" l (t_to_path t) k)
-        Json.(fun _ _ -> OK ())
+        Json.(fun _ _ -> Ok ())
 
     let get_rel_exist rt k =
       _get (sprintf "schema/relationship/constraint/%s/existence/%s" rt k)
@@ -958,14 +958,14 @@ struct
           let len = String.length s in
           if i + 1 = len then "" else String.sub s (i + 1) (len - i - 1)
         in
-        OK (l, r)
+        Ok (l, r)
       with
       | Not_found -> Error (Unexpected "rsplit")
 
     let node_id = function
       | `String uri ->
           rsplit ~by:'/' uri >>= (fun (_, n) ->
-              try OK (int_of_string n)
+              try Ok (int_of_string n)
               with Failure _ -> Error (Unexpected ("node id: " ^ n))
             )
 
@@ -974,7 +974,7 @@ struct
     let rel_id = function
       | `String uri ->
           rsplit ~by:'/' uri >>= (fun (_, n) ->
-              try OK (int_of_string n)
+              try Ok (int_of_string n)
               with Failure _ -> Error (Unexpected ("relationship id: " ^ n))
             )
 
@@ -982,14 +982,14 @@ struct
 
     let combine3 m l1 l2 l3 =
       try
-        OK (List.combine (List.combine l1 l2) l3)
+        Ok (List.combine (List.combine l1 l2) l3)
       with
       | Invalid_argument _ -> Error (Unexpected m)
 
     let dir = function
-      | `String "<->" -> OK `In_out
-      | `String "->"  -> OK `Out
-      | `String "<-"  -> OK `In
+      | `String "<->" -> Ok `In_out
+      | `String "->"  -> Ok `Out
+      | `String "<-"  -> Ok `In
       | j             -> Error (Invalid_json ("direction", j))
 
     let json_to_path json =
@@ -1007,7 +1007,7 @@ struct
               nodes rels dirs
             >>= (fun path ->
                 let path = (start_node, List.map (fun ((n, r), d) -> (d, r, n)) path) in
-                OK { start_node; end_node; length; weight; path }
+                Ok { start_node; end_node; length; weight; path }
               )
           ))))))))
 
@@ -1082,7 +1082,7 @@ struct
       assoc json
       >>= (fun obj -> field "code" obj >>= string
       >>= (fun code -> field "message" obj >>= string
-      >>= (fun message -> OK { code; message })))
+      >>= (fun message -> Ok { code; message })))
 
     type stats = {
       contains_updates : bool;
@@ -1119,7 +1119,7 @@ struct
       >>= (fun obj -> opt_field "row" obj >>= omap list
       >>= (fun row -> opt_field "graph" obj
       >>= (fun graph -> opt_field "rest" obj
-      >>= (fun rest -> OK { row; graph; rest }))))
+      >>= (fun rest -> Ok { row; graph; rest }))))
 
     let stats_from_json json =
       let open Json in
@@ -1136,7 +1136,7 @@ struct
       >>= (fun indexes_added -> field "indexes_removed" obj >>= int
       >>= (fun indexes_removed -> field "constraints_added" obj >>= int
       >>= (fun constraints_added -> field "constraints_removed" obj >>= int
-      >>= (fun constraints_removed -> OK {
+      >>= (fun constraints_removed -> Ok {
               contains_updates;
               nodes_created;
               nodes_deleted;
@@ -1158,7 +1158,7 @@ struct
       >>= (fun obj -> field "columns" obj >>= list >>= lmap string
       >>= (fun columns -> field "data" obj >>= list >>= lmap data_from_json
       >>= (fun data -> opt_field "stats" obj >>= omap stats_from_json
-      >>= (fun stats -> OK { columns; data; stats }))))
+      >>= (fun stats -> Ok { columns; data; stats }))))
 
     type transaction = {
       tid : string;
@@ -1170,7 +1170,7 @@ struct
       some_of json >>= assoc
       >>= (fun rsp -> field "results" rsp >>= list >>= lmap result_from_json
       >>= (fun results -> field "errors" rsp >>= list >>= lmap error_from_json
-      >>= (fun errors -> OK (results, errors))))
+      >>= (fun errors -> Ok (results, errors))))
 
     let rsp_transaction_from_json t _ json =
       let open Json in
@@ -1179,7 +1179,7 @@ struct
       >>= (fun results -> field "errors" rsp >>= list >>= lmap error_from_json
       >>= (fun errors -> field "transaction" rsp
       >>= assoc >>= field "expires" >>= string
-      >>= (fun expires -> OK ((results, errors), { t with expires })))))
+      >>= (fun expires -> Ok ((results, errors), { t with expires })))))
 
     let query_to_json (stmt, params, contents) =
       let stmt =
@@ -1240,7 +1240,7 @@ struct
       _post (sprintf "transaction/%s" t.tid) ~data (rsp_transaction_from_json t)
 
     let reset_timeout t =
-      map_rsp (fun (_, t) -> OK t) (execute_in_transaction [] t)
+      map_rsp (fun (_, t) -> Ok t) (execute_in_transaction [] t)
 
     let commit qs t =
       let data = queries_to_json qs in
